@@ -15,6 +15,7 @@ export default class FileStreamRotator extends EventEmitter {
         return new FileStreamRotator(options)
     }
 
+    private rotatePromise: Promise<void> | undefined;
     private config: FileStreamRotatorConfig = {}
     private fs?: fs.WriteStream
     private rotator: Rotator
@@ -135,9 +136,16 @@ export default class FileStreamRotator extends EventEmitter {
             this.auditManager.addLog(oldFile)
         }
 
-        this.createNewLog(this.currentFile)
-        this.emit('new', this.currentFile)
-        this.emit('rotate', oldFile, this.currentFile, force)
+        this.createNewLog(this.currentFile);
+        this.emit('new', this.currentFile);
+        if (this.config.options?.rotate && oldFile) {
+            this.rotatePromise = this.config.options.rotate(oldFile)
+            .catch(() => {/* do nothing */ })
+            .then(() => {
+                this.rotatePromise = undefined;
+            });
+        }
+        this.emit('rotate', oldFile, this.currentFile, force);
     }
 
     private createNewLog(filename: string) {
@@ -166,12 +174,12 @@ export default class FileStreamRotator extends EventEmitter {
 
     write(str: string, encoding?: BufferEncoding) {
         if (this.fs) {
-            if(this.rotator.shouldRotate()){
+            if(this.rotatePromise == null &&  this.rotator.shouldRotate()){
                 this.rotate()
             }
             this.fs.write(str, encoding ?? "utf8")
             this.rotator.addBytes(Buffer.byteLength(str, encoding))
-            if (this.rotator.hasMaxSizeReached()){
+            if (this.rotatePromise == null && this.rotator.hasMaxSizeReached()){
                 this.rotate()
             }
         }

@@ -90,6 +90,9 @@ export type FileStreamRotatorOptions = {
     symlink_name?: string
     /** Use specified hashing algorithm for audit. Defaults to 'md5'. Use 'sha256' for FIPS compliance. */
     audit_hash_type?: "md5" | "sha256"
+
+    /* rotate function to be called before emit rotate event */
+    rotate?: (path: string) => Promise<void>
 }
 
 export type FileStreamRotatorConfig = {
