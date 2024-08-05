@@ -6,7 +6,10 @@ NodeJS file stream rotator
 
 ## Purpose
 
-To provide an automated rotation of Express/Connect logs or anything else that writes to a file on a regular basis that needs to be rotated based on date, a size limit or combination and remove old log files based on count or elapsed days. 
+To provide an automated rotation of Express/Connect logs or anything else that writes to a file on a regular basis that needs to be rotated based on date, a size limit or combination and remove old log files based on count or elapsed days.
+This fork of File-Stream-Rotator adds an option to call a rotate async function at rotation time. No other rotation can occur until this promise does complete. During 
+the promise run, logs are written in new current file. The current file size can therefore go higher than the max if the rotate function call takes too much time.
+This option is useful if you want to compress the file on rotation.
 
 ## Install
 
@@ -45,7 +48,7 @@ Frequency options have changed too.
  - *create_symlink*  Create a tailable symlink to the current active log file. Defaults to 'FALSE'
  - *symlink_name*    Name to use when creating the symbolic link. Defaults to 'current.log'
  - *audit_hash_type* Use specified hashing algorithm for audit. Defaults to 'md5'. Use 'sha256' for FIPS compliance.
- 
+ - *rotate           Async function to call at time of rotation. Function takes single parameter which is the name of the old file.
 
 ## Example Usage
 
@@ -104,6 +107,8 @@ var rotatingLogStream = require('file-stream-rotator').getStream({filename:"/tmp
 // Rotate by file size only without date included in the name. Rotation added before the extension.
 var rotatingLogStream = require('file-stream-rotator').getStream({filename:"/tmp/logfile", size:"50k", max_logs: "5", audit_file:"/tmp/logaudit.json", extension: ".log"});
 
+// Rotate by file size only and compress.
+var rotatingLogStream = require('file-stream-rotator').getStream({filename:"/tmp/logfile", size:"50k", max_logs: "5", rotate: async (oldFile) => compress(oldFile)});
 
 //.....    
 

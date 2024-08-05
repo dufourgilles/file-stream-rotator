@@ -31,7 +31,9 @@ export default class FileStreamRotator extends EventEmitter {
         this.auditManager = new AuditManager(this.config.auditSettings ?? DefaultOptions.auditSettings({}), this)
         let lastEntry = this.auditManager.config.files.slice(-1).shift()
         this.rotator = new Rotator((this.config.rotationSettings ?? DefaultOptions.rotationSettings({})), lastEntry)
-        this.rotate();
+        this.currentFile = this.rotator.getNewFilename();
+        this.createNewLog(this.currentFile);
+        this.emit('new', this.currentFile);
     }
 
     private parseOptions(options: Partial<FileStreamRotatorOptions>): FileStreamRotatorConfig {
