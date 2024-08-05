@@ -1,6 +1,6 @@
 {
     "name": "simple-fs-rotator",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "description": "Automated stream rotation useful for log files",
     "main": "lib/index.js",
     "types": "lib/index.d.ts",
