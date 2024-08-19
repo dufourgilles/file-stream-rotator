@@ -1,5 +1,5 @@
 
-simple-fs-rotator
+file-stream-rotator
 ===================
 
 NodeJS file stream rotator
@@ -11,7 +11,7 @@ To provide an automated rotation of Express/Connect logs or anything else that w
 ## Install
 
 ```
-npm install simple-fs-rotator
+npm install file-stream-rotator
 ```
 
 **IMPORTANT NOTE**
