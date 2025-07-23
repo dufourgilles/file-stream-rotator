@@ -14,7 +14,8 @@ export default class FileStreamRotator extends EventEmitter {
     static getStream(options: Partial<FileStreamRotatorOptions>): FileStreamRotator {
         return new FileStreamRotator(options)
     }
-
+    private writeBuffer: {str: string, encoding?: BufferEncoding}[] = [];
+    private writing = false;
     private rotatePromise: Promise<void> | undefined;
     private config: FileStreamRotatorConfig = {}
     private fs?: fs.WriteStream
@@ -174,18 +175,50 @@ export default class FileStreamRotator extends EventEmitter {
         }
     }
 
-    write(str: string, encoding?: BufferEncoding) {
-        if (this.fs) {
-            if(this.rotatePromise == null &&  this.rotator.shouldRotate()){
-                this.rotate()
+    async #write(): Promise<void> {
+        const buffers = this.writeBuffer.splice(0);
+        for(const buffer of buffers) {
+            if (this.rotatePromise != null) {
+                try {
+                    await this.rotatePromise;
+                } catch{}
+                }
+            await new Promise<void>(resolve => {
+                if (this.fs) {
+                    this.fs.write(buffer.str, buffer.encoding || "utf8", err => {
+                        if (err == null) {
+                            this.rotator.addBytes(Buffer.byteLength(buffer.str, buffer.encoding));
+                        }
+                        resolve();
+                    });
+                }
+            });
+                if (this.rotatePromise == null && this.rotator.hasMaxSizeReached()){
+                this.rotate();
+                }
             }
-            this.fs.write(str, encoding ?? "utf8")
-            this.rotator.addBytes(Buffer.byteLength(str, encoding))
-            if (this.rotatePromise == null && this.rotator.hasMaxSizeReached()){
-                this.rotate()
-            }
+        if (this.writeBuffer.length > 0) {
+            await this.#write();
+        } else {
+            this.writing = false;
         }
     }
+
+    write(str: string, encoding?: BufferEncoding) {
+        this.writeBuffer.push({str, encoding});
+        if (this.writing) {
+            return;
+        }
+        this.writing = true;
+        this.#write();
+    }
+
+    flush(cb?: () => void) {
+        this.#write()
+        .then(() => {
+            if (cb) cb();
+        });
+     }
 
     end(str: string) {
         if (this.fs){
