@@ -8,11 +8,6 @@
     "extension": ".log",
     "files": [
         {
-            "date": 1767963297211,
-            "name": "logs/nodate/logfileRenamed.7.log",
-            "hash": "80930a8f3bdad6c38d83c42ee54380ba"
-        },
-        {
             "date": 1767963297225,
             "name": "logs/nodate/logfileRenamed.8.log",
             "hash": "c1437f066382051127ee2c9fb4cc974e"
@@ -56,6 +51,11 @@
             "date": 1767963297683,
             "name": "logs/nodate/logfileRenamed.6.log",
             "hash": "aed7e88a59ae565067ddf24f2c1df412"
+        },
+        {
+            "date": 1767969352690,
+            "name": "logs/nodate/logfile.6.log",
+            "hash": "7832423949d00b543b312a74e3a6d10c"
         }
     ]
 }

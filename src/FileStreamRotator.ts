@@ -15,6 +15,7 @@ export default class FileStreamRotator extends EventEmitter {
     static getStream(options: Partial<FileStreamRotatorOptions>): FileStreamRotator {
         return new FileStreamRotator(options)
     }
+    private dropCount = 0;
     private writeBuffer: {str: string, encoding?: BufferEncoding}[] = [];
     private writing = false;
     private rotatePromise: Promise<void> | undefined;
@@ -122,6 +123,10 @@ export default class FileStreamRotator extends EventEmitter {
         return config;
     }
 
+    get drops(): number {
+        return this.dropCount;
+    }
+    
     async renameFile(newName: string): Promise<void> {
         const oldName = this.rotator.settings.filename;
         if (oldName === newName) {
@@ -266,6 +271,8 @@ export default class FileStreamRotator extends EventEmitter {
     write(str: string, encoding?: BufferEncoding) {
         if (this.maxBufferSize != 0 && this.writeBuffer.length < this.maxBufferSize) {
             this.writeBuffer.push({str, encoding});
+        } else {
+            this.dropCount++;
         }
         if (this.writing) {
             return;
