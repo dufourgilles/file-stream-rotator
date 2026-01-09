@@ -1,4 +1,5 @@
 import * as fs from "fs";
+import { rename } from "fs/promises";
 import path = require('path');
 
 import type { FileStreamRotatorOptions, FileStreamRotatorConfig, AuditSettings } from "./types";
@@ -17,32 +18,41 @@ export default class FileStreamRotator extends EventEmitter {
     private writeBuffer: {str: string, encoding?: BufferEncoding}[] = [];
     private writing = false;
     private rotatePromise: Promise<void> | undefined;
-    private config: FileStreamRotatorConfig = {}
-    private fs?: fs.WriteStream
-    private rotator: Rotator
-    private currentFile?: string
-    private auditManager: AuditManager
+    private config: FileStreamRotatorConfig = {};
+    private fs?: fs.WriteStream;
+    private rotator: Rotator;
+    private currentFile?: string;
+    private auditManager: AuditManager;
+    private maxBufferSize = 10000;
+    private renaming = false;
+    private writingEndedCB: (() => void) | null = null;
     // private logWatcher?: FSWatcher
 
     constructor(options: Partial<FileStreamRotatorOptions>, debug: boolean = false){
-        super()
-        this.config = this.parseOptions(options)
-        Logger.getInstance(options.verbose, debug)
+        super();
+        this.config = this.parseOptions(options);
+        Logger.getInstance(options.verbose, debug);
 
-        this.auditManager = new AuditManager(this.config.auditSettings ?? DefaultOptions.auditSettings({}), this)
-        let lastEntry = this.auditManager.config.files.slice(-1).shift()
-        this.rotator = new Rotator((this.config.rotationSettings ?? DefaultOptions.rotationSettings({})), lastEntry)
-        this.currentFile = this.rotator.getNewFilename();
+        this.auditManager = new AuditManager(this.config.auditSettings ?? DefaultOptions.auditSettings({}), this);
+        let lastEntry = this.auditManager.config.files.slice(-1).shift();
+        this.rotator = new Rotator((this.config.rotationSettings ?? DefaultOptions.rotationSettings({})), lastEntry);
+        this.currentFile = this.rotator.getNewFilename();;
         this.createNewLog(this.currentFile);
         this.emit('new', this.currentFile);
     }
 
     private parseOptions(options: Partial<FileStreamRotatorOptions>): FileStreamRotatorConfig {
-        let config: FileStreamRotatorConfig = {}
-        config.options = DefaultOptions.fileStreamRotatorOptions(options)
-        config.fileOptions = DefaultOptions.fileOptions(options.file_options ?? {})
+        let config: FileStreamRotatorConfig = {};
+        config.options = DefaultOptions.fileStreamRotatorOptions(options);
+        config.fileOptions = DefaultOptions.fileOptions(options.file_options ?? {});
 
-        let auditSettings: AuditSettings = DefaultOptions.auditSettings({})
+        if (options.buffer_size) {
+            const val = Number(options.buffer_size);
+            if (!isNaN(val)) {
+                this.maxBufferSize = val;
+            }
+        }
+        let auditSettings: AuditSettings = DefaultOptions.auditSettings({});
         if (options.audit_file) {
             auditSettings.auditFilename = options.audit_file
         }
@@ -112,14 +122,50 @@ export default class FileStreamRotator extends EventEmitter {
         return config;
     }
 
+    async renameFile(newName: string): Promise<void> {
+        const oldName = this.rotator.settings.filename;
+        if (oldName === newName) {
+            return;
+        }
+
+        const oldFile = this.currentFile;
+        if (oldFile == null) {
+            return;
+        }
+
+        this.renaming = true;
+        if (this.fs) {
+            const writingEndedPromise = new Promise<void>((resolve) => {
+                this.writingEndedCB = resolve;
+            });
+            if (this.writing) {
+                await writingEndedPromise;
+                this.writingEndedCB = null;
+            }
+            const fs = this.fs;
+            this.fs = undefined;
+            if(this.config.options?.end_stream === true){
+                fs.end();
+            }else{
+                fs.destroy();
+            }
+        }
+        this.rotator.settings.filename = newName;
+        this.currentFile = this.rotator.getNewFilename();
+        await rename(oldFile, this.currentFile);
+        this.createNewLog(this.currentFile);        
+        this.emit('new', this.currentFile);
+        this.renaming = false;
+    }
+
     rotate(force: boolean = false) {
-        let oldFile = this.currentFile
-        this.rotator.rotate(force)
-        this.currentFile = this.rotator.getNewFilename()
+        let oldFile = this.currentFile;
+        this.rotator.rotate(force);
+        this.currentFile = this.rotator.getNewFilename();
 
         // oldfile same as new file. do nothing
         if (this.currentFile == oldFile) {
-            return
+            return;
         }
 
         // close old file and watcher if exists.
@@ -176,13 +222,23 @@ export default class FileStreamRotator extends EventEmitter {
     }
 
     async #write(): Promise<void> {
+        if (this.fs == null) {
+            return;
+        }
+        if (this.renaming) {
+            this.writing = false;
+            if (this.writingEndedCB) {
+                this.writingEndedCB();
+            }
+            return;
+        }
         const buffers = this.writeBuffer.splice(0);
         for(const buffer of buffers) {
             if (this.rotatePromise != null) {
                 try {
                     await this.rotatePromise;
                 } catch{}
-                }
+            }
             await new Promise<void>(resolve => {
                 if (this.fs) {
                     this.fs.write(buffer.str, buffer.encoding || "utf8", err => {
@@ -193,19 +249,24 @@ export default class FileStreamRotator extends EventEmitter {
                     });
                 }
             });
-                if (this.rotatePromise == null && this.rotator.hasMaxSizeReached()){
+            if (this.rotatePromise == null && this.rotator.hasMaxSizeReached()){
                 this.rotate();
-                }
             }
+        }
         if (this.writeBuffer.length > 0) {
             await this.#write();
         } else {
             this.writing = false;
+            if (this.writingEndedCB) {
+                this.writingEndedCB();
+            }
         }
     }
 
     write(str: string, encoding?: BufferEncoding) {
-        this.writeBuffer.push({str, encoding});
+        if (this.maxBufferSize != 0 && this.writeBuffer.length < this.maxBufferSize) {
+            this.writeBuffer.push({str, encoding});
+        }
         if (this.writing) {
             return;
         }

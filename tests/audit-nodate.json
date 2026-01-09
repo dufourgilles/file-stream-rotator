@@ -1,0 +1,61 @@
+{
+    "keepSettings": {
+        "type": 2,
+        "amount": 10
+    },
+    "auditFilename": "audit-nodate.json",
+    "hashType": "md5",
+    "extension": ".log",
+    "files": [
+        {
+            "date": 1767963297211,
+            "name": "logs/nodate/logfileRenamed.7.log",
+            "hash": "80930a8f3bdad6c38d83c42ee54380ba"
+        },
+        {
+            "date": 1767963297225,
+            "name": "logs/nodate/logfileRenamed.8.log",
+            "hash": "c1437f066382051127ee2c9fb4cc974e"
+        },
+        {
+            "date": 1767963297278,
+            "name": "logs/nodate/logfileRenamed.9.log",
+            "hash": "a83746a3d4845de14b9c2c6a8f4e3868"
+        },
+        {
+            "date": 1767963297336,
+            "name": "logs/nodate/logfileRenamed.0.log",
+            "hash": "b739a145cab87dbe9ff48ef89c0e8318"
+        },
+        {
+            "date": 1767963297391,
+            "name": "logs/nodate/logfileRenamed.1.log",
+            "hash": "d3bb43bbcf3e4dbc135973b66cd05788"
+        },
+        {
+            "date": 1767963297450,
+            "name": "logs/nodate/logfileRenamed.2.log",
+            "hash": "a49bb0d97a6176abd65a95f7c77048ec"
+        },
+        {
+            "date": 1767963297510,
+            "name": "logs/nodate/logfileRenamed.3.log",
+            "hash": "5f98eb132243a1dabeac459cdfb6d911"
+        },
+        {
+            "date": 1767963297563,
+            "name": "logs/nodate/logfileRenamed.4.log",
+            "hash": "53f4b4cbcef34ab63fc09f652099537b"
+        },
+        {
+            "date": 1767963297623,
+            "name": "logs/nodate/logfileRenamed.5.log",
+            "hash": "d95d1273103fc620a38d17da5fa99f57"
+        },
+        {
+            "date": 1767963297683,
+            "name": "logs/nodate/logfileRenamed.6.log",
+            "hash": "aed7e88a59ae565067ddf24f2c1df412"
+        }
+    ]
+}

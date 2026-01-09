@@ -91,6 +91,12 @@ export type FileStreamRotatorOptions = {
     /** Use specified hashing algorithm for audit. Defaults to 'md5'. Use 'sha256' for FIPS compliance. */
     audit_hash_type?: "md5" | "sha256"
 
+    /** 
+     * logs are buffered before being processed. Set up the maximum number of messages to be buffered. 
+     * When the buffer is full, new logs get dropped.
+     * Default value: 10k
+    */
+    buffer_size?: number
     /* rotate function to be called before emit rotate event */
     rotate?: (path: string) => Promise<void>
 }

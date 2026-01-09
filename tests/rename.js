@@ -54,6 +54,10 @@ var i = setInterval(function(){
         return;
     }
 
+    if (counter == 120) {
+      rotatingLogStream.renameFile("logs/nodate/logfileRenamed").catch(e => console.log(e));
+    }
+
     //*
     rotatingLogStream.write(Date() + "\t");
     for(var y = 0; y<400; y++){
