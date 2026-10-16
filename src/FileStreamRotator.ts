@@ -16,7 +16,11 @@ export default class FileStreamRotator extends EventEmitter {
         return new FileStreamRotator(options)
     }
     private dropCount = 0;
-    private writeBuffer: {str: string, encoding?: BufferEncoding}[] = [];
+    private writeBuffer: ({str: string, encoding?: BufferEncoding} | {rotate: (file?: string) => void})[] = [];
+    private rotationsQueued = 0;
+    private enqueued = 0;
+    private written = 0;
+    private drainWaiters: {target: number, resolve: () => void}[] = [];
     private writing = false;
     private rotatePromise: Promise<void> | undefined;
     private config: FileStreamRotatorConfig = {};
@@ -161,6 +165,11 @@ export default class FileStreamRotator extends EventEmitter {
         this.createNewLog(this.currentFile);        
         this.emit('new', this.currentFile);
         this.renaming = false;
+        // lines queued while renaming were left in the buffer
+        if (!this.writing && this.writeBuffer.length > 0) {
+            this.writing = true;
+            this.#write();
+        }
     }
 
     rotate(force: boolean = false) {
@@ -174,6 +183,7 @@ export default class FileStreamRotator extends EventEmitter {
         }
 
         // close old file and watcher if exists.
+        const oldFs = this.fs;
         if (this.fs) {
             // if (this.logWatcher) {
             //     this.logWatcher.close()
@@ -193,7 +203,10 @@ export default class FileStreamRotator extends EventEmitter {
         this.createNewLog(this.currentFile);
         this.emit('new', this.currentFile);
         if (this.config.options?.rotate && oldFile) {
-            this.rotatePromise = this.config.options.rotate(oldFile)
+            const rotateCB = this.config.options.rotate;
+            // the old file is complete only once its stream has flushed
+            this.rotatePromise = (oldFs ? FileStreamRotator.streamEnded(oldFs) : Promise.resolve())
+            .then(() => rotateCB(oldFile as string))
             .catch(() => {/* do nothing */ })
             .then(() => {
                 this.rotatePromise = undefined;
@@ -226,8 +239,42 @@ export default class FileStreamRotator extends EventEmitter {
         }
     }
 
+    // 'finish' is not emitted when the stream is destroyed (end_stream: false), so 'close' also counts.
+    private static streamEnded(stream: fs.WriteStream): Promise<void> {
+        return new Promise<void>(resolve => {
+            if (stream.writableFinished || stream.destroyed) {
+                resolve();
+                return;
+            }
+            const done = () => {
+                stream.removeListener('finish', done);
+                stream.removeListener('close', done);
+                resolve();
+            };
+            stream.once('finish', done);
+            stream.once('close', done);
+        });
+    }
+
+    private lineWritten() {
+        this.written++;
+        const waiters = this.drainWaiters;
+        this.drainWaiters = [];
+        for (const waiter of waiters) {
+            if (waiter.target <= this.written) {
+                waiter.resolve();
+            } else {
+                this.drainWaiters.push(waiter);
+            }
+        }
+    }
+
     async #write(): Promise<void> {
         if (this.fs == null) {
+            this.writing = false;
+            if (this.writingEndedCB) {
+                this.writingEndedCB();
+            }
             return;
         }
         if (this.renaming) {
@@ -238,7 +285,24 @@ export default class FileStreamRotator extends EventEmitter {
             return;
         }
         const buffers = this.writeBuffer.splice(0);
+        this.rotationsQueued = 0;
         for(const buffer of buffers) {
+            if ('rotate' in buffer) {
+                const oldFile = this.currentFile;
+                const oldFs = this.fs;
+                this.rotate(true);
+                const rotated = this.currentFile !== oldFile;
+                if (rotated) {
+                    if (oldFs) {
+                        await FileStreamRotator.streamEnded(oldFs);
+                    }
+                    if (this.rotatePromise != null) {
+                        await this.rotatePromise;
+                    }
+                }
+                buffer.rotate(rotated ? oldFile : undefined);
+                continue;
+            }
             if (this.rotatePromise != null) {
                 try {
                     await this.rotatePromise;
@@ -252,8 +316,11 @@ export default class FileStreamRotator extends EventEmitter {
                         }
                         resolve();
                     });
+                } else {
+                    resolve();
                 }
             });
+            this.lineWritten();
             if (this.rotatePromise == null && this.rotator.hasMaxSizeReached()){
                 this.rotate();
             }
@@ -269,8 +336,9 @@ export default class FileStreamRotator extends EventEmitter {
     }
 
     write(str: string, encoding?: BufferEncoding) {
-        if (this.maxBufferSize != 0 && this.writeBuffer.length < this.maxBufferSize) {
+        if (this.maxBufferSize != 0 && this.writeBuffer.length - this.rotationsQueued < this.maxBufferSize) {
             this.writeBuffer.push({str, encoding});
+            this.enqueued++;
         } else {
             this.dropCount++;
         }
@@ -281,12 +349,39 @@ export default class FileStreamRotator extends EventEmitter {
         this.#write();
     }
 
-    flush(cb?: () => void) {
-        this.#write()
-        .then(() => {
-            if (cb) cb();
+    /**
+     * Resolves once every line written before the call has been written to the file.
+     */
+    drain(): Promise<void> {
+        const target = this.enqueued;
+        if (this.written >= target) {
+            return Promise.resolve();
+        }
+        return new Promise<void>(resolve => {
+            this.drainWaiters.push({target, resolve});
         });
-     }
+    }
+
+    flush(cb?: () => void) {
+        this.drain().then(() => cb?.());
+    }
+
+    /**
+     * Rotates in order with the queued lines: lines written before the call end up in the old file,
+     * lines written after in the new one. Resolves once the old file is flushed (and the rotate
+     * option callback is done) with its path, or undefined if no new file was started.
+     */
+    forceRotate(): Promise<string | undefined> {
+        return new Promise<string | undefined>(resolve => {
+            this.writeBuffer.push({rotate: resolve});
+            this.rotationsQueued++;
+            if (this.writing) {
+                return;
+            }
+            this.writing = true;
+            this.#write();
+        });
+    }
 
     end(str: string) {
         if (this.fs){

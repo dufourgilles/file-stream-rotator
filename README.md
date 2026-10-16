@@ -48,7 +48,7 @@ Frequency options have changed too.
  - *create_symlink*  Create a tailable symlink to the current active log file. Defaults to 'FALSE'
  - *symlink_name*    Name to use when creating the symbolic link. Defaults to 'current.log'
  - *audit_hash_type* Use specified hashing algorithm for audit. Defaults to 'md5'. Use 'sha256' for FIPS compliance.
- - *rotate           Async function to call at time of rotation. Function takes single parameter which is the name of the old file.
+ - *rotate           Async function to call at time of rotation. Function takes single parameter which is the name of the old file. It is called once the old file has been flushed.
 
 ## Example Usage
 
@@ -122,6 +122,20 @@ app.use(express.logger({stream: rotatingLogStream, format: "default"}));
 You can manually rotate the current open log to allow log archiving.
 ```javascript
 rotatingLogStream.rotate(true)
+```
+
+`rotate(true)` is immediate and does not wait for pending data. To rotate in order with the queued lines and wait until the old file is complete, use `forceRotate()`:
+```javascript
+const oldFile = await rotatingLogStream.forceRotate()
+```
+Every line written before the call goes to the old file, every line written after it to the new one. The promise resolves with the path of the old file once it is
+fully flushed (and the `rotate` option callback, if any, has finished), or with `undefined` if no new file was started. The request is never dropped and does not count against `buffer_size`.
+
+`drain()` returns a promise that resolves once every line written before the call has been written to the file. Lines written afterwards are not waited for, so it resolves even under constant logging.
+`flush(cb)` is equivalent to `drain().then(cb)`.
+```javascript
+rotatingLogStream.write("last line\n")
+await rotatingLogStream.drain()
 ```
 
     
